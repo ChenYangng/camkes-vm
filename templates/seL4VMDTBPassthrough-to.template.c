@@ -36,8 +36,8 @@
     /*- set reg_set = pop('reg_set') -*/
 
     /*- for paddr, size in reg_set -*/
-        /*- set paddr = macros.ROUND_DOWN(paddr, 4096) -*/
-        /*- set size = macros.ROUND_UP(size, 4096) -*/
+        /*- set paddr = macros.ROUND_DOWN(paddr, 16384) -*/
+        /*- set size = macros.ROUND_UP(size, 16384) -*/
         /*- for paddr_alloc, size_bits in macros.get_untypeds_from_range(paddr, size) -*/
             /*- set cap = alloc('dtb_untyped_cap_0x%x' % paddr_alloc, seL4_UntypedObject, paddr = paddr_alloc, size_bits = size_bits) -*/
             /*- do untyped_dtb_mmio.append( (paddr_alloc, size_bits, cap) ) -*/
