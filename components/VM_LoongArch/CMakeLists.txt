@@ -34,9 +34,9 @@ config_option(
     VM_PCI_SUPPORT
     "Enable virtual pci device support"
     DEPENDS
-    "KernelPlatformExynos5410 OR KernelPlatformExynos5422 OR KernelPlatformTx2 OR KernelPlatformQEMUArmVirt OR KernelPlatformOdroidc2 OR KernelPlatformZynqmp"
+    "KernelPlatform3A5000 OR KernelPlatformExynos5410 OR KernelPlatformExynos5422 OR KernelPlatformTx2 OR KernelPlatformQEMUArmVirt OR KernelPlatformOdroidc2 OR KernelPlatformZynqmp"
     DEFAULT
-    OFF
+    ON
 )
 
 config_option(
@@ -118,7 +118,7 @@ config_option(
     VM_INITRD_FILE
     "Enables the option for the VM to open and load a seperate initrd file"
     DEFAULT
-    OFF
+    ON
 )
 
 config_option(
@@ -126,7 +126,7 @@ config_option(
     VM_DTB_FILE
     "Enables the option for the VM to open and load a seperate dtb file"
     DEFAULT
-    OFF
+    ON
 )
 
 config_option(

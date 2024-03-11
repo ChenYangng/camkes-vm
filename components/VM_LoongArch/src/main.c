@@ -41,9 +41,9 @@
 #include <sel4vmmplatsupport/drivers/virtio_con.h>
 
 // #include <sel4vmmplatsupport/arch/vusb.h>
-// #include <sel4vmmplatsupport/arch/vpci.h>
+#include <sel4vmmplatsupport/arch/vpci.h>
 #include <sel4vmmplatsupport/guest_image.h>
-// #include <sel4vmmplatsupport/drivers/pci_helper.h>
+#include <sel4vmmplatsupport/drivers/pci_helper.h>
 #include <sel4vmmplatsupport/arch/guest_boot_init.h>
 #include <sel4vmmplatsupport/drivers/cross_vm_connection.h>
 // #include <sel4vmmplatsupport/arch/guest_reboot.h>
@@ -102,14 +102,14 @@ allocman_t *allocman;
 seL4_CPtr _fault_endpoint;
 irq_server_t *_irq_server;
 
-// vmm_pci_space_t *pci;
-// vmm_io_port_list_t *io_ports;
+vmm_pci_space_t *pci;
+vmm_io_port_list_t *io_ports;
 // reboot_hooks_list_t reboot_hooks_list;
 
 /* So far, 320 KiB was enough for each DTB buffer. Increase if necessary. */
-// #define DTB_BUFFER_SIZE (320*1024)
-// char gen_dtb_buf[DTB_BUFFER_SIZE]; /* accessed by modules */
-// static char gen_dtb_base_buf[DTB_BUFFER_SIZE];
+#define DTB_BUFFER_SIZE (320*1024)
+char gen_dtb_buf[DTB_BUFFER_SIZE]; /* accessed by modules */
+static char gen_dtb_base_buf[DTB_BUFFER_SIZE];
 
 // void *fdt_ori;
 
@@ -135,11 +135,12 @@ seL4_CPtr camkes_get_smmu_cb_cap();
 seL4_CPtr camkes_get_smmu_sid_cap();
 #endif
 
-// int get_crossvm_irq_num(void)
-// {
-//     return free_plat_interrupts[0];
-// }
-//
+int get_crossvm_irq_num(void)
+{
+    // return free_plat_interrupts[0];
+    return 2;
+}
+
 // static int _dma_morecore(size_t min_size, int cached, struct
 // dma_mem_descriptor *dma_desc)
 // {
@@ -510,6 +511,7 @@ static int vmm_init(const vm_config_t *vm_config) {
     bool is_device;
     seL4_CPtr cap =
         simple_get_nth_untyped(simple, i, &size_bits, &paddr, &is_device);
+    printf("simle_get_nth:untyped: %d, paddr: 0x%lx\n", i, paddr);
     err = add_uts(vm_config, vka, cap, paddr, size_bits, is_device);
     assert(!err);
   }
@@ -697,13 +699,13 @@ static int install_vm_devices(vm_t *vm, const vm_config_t *vm_config) {
   int err;
 
   /* Install virtual devices */
-  // if (config_set(CONFIG_VM_PCI_SUPPORT)) {
-  //     err = vm_install_vpci(vm, io_ports, pci);
-  //     if (err) {
-  //         ZF_LOGE("Failed to install VPCI device");
-  //         return -1;
-  //     }
-  // }
+  if (config_set(CONFIG_VM_PCI_SUPPORT)) {
+      err = vm_install_vpci(vm, io_ports, pci);
+      if (err) {
+          ZF_LOGE("Failed to install VPCI device");
+          return -1;
+      }
+  }
 
   int max_vmm_modules = (int)(__stop__vmm_module - __start__vmm_module);
   int num_vmm_modules = 0;
@@ -914,18 +916,26 @@ static int install_vm_devices(vm_t *vm, const vm_config_t *vm_config) {
 //     return 0;
 // }
 
-// static int load_generated_dtb(vm_t *vm, uintptr_t paddr, void *addr, size_t
-// size, size_t offset, void *cookie)
-// {
-//     ZF_LOGD("paddr: 0x%lx, addr: 0x%lx, size: 0x%lx, offset: 0x%lx", paddr,
-//     (seL4_Word) addr, size, offset); memcpy(addr, cookie + offset, size);
-//     return 0;
-// }
+static int load_generated_dtb(vm_t *vm, uintptr_t paddr, void *addr, size_t
+size, size_t offset, void *cookie)
+{
+    ZF_LOGD("paddr: 0x%lx, addr: 0x%lx, size: 0x%lx, offset: 0x%lx", paddr,
+    (seL4_Word) addr, size, offset); memcpy(addr, cookie + offset, size);
+    return 0;
+}
 
 static int load_vm_images(vm_t *vm, const vm_config_t *vm_config) {
   seL4_Word entry;
   seL4_Word dtb;
   int err;
+
+  printf("Loading Bios \n");
+  guest_image_t bios_image;
+  err = vm_load_guest_module(vm, "bios", 0x1c000000, 0, &bios_image);
+  seL4_Word bios = (seL4_Word)bios_image.load_paddr;
+  if (!bios || err) {
+    return -1;
+  }
 
   /* Load kernel */
   printf("Loading Kernel: \'%s\'\n", vm_config->files.kernel);
@@ -949,61 +959,59 @@ static int load_vm_images(vm_t *vm, const vm_config_t *vm_config) {
   // }
 
   /* Attempt to load initrd if provided */
-  // guest_image_t initrd_image;
-  // if (vm_config->provide_initrd) {
-  //     printf("Loading Initrd: \'%s\'\n", vm_config->files.initrd);
-  //     err = vm_load_guest_module(vm, vm_config->files.initrd,
-  //                                vm_config->initrd_addr, 0, &initrd_image);
-  //     void *initrd = (void *)initrd_image.load_paddr;
-  //     if (!initrd || err) {
-  //         return -1;
-  //     }
-  //     if (vm_config->generate_dtb) {
-  //         err = fdt_append_chosen_node_with_initrd_info(gen_dtb_buf,
-  //                                                       vm_config->initrd_addr,
-  //                                                       initrd_image.size);
-  //         if (err) {
-  //             ZF_LOGE("Couldn't generate chosen_node_with_initrd_info (%d)",
-  //             err); return -1;
-  //         }
-  //     }
-  // }
+  guest_image_t initrd_image;
+  if (vm_config->provide_initrd) {
+      printf("Loading Initrd: \'%s\'\n", vm_config->files.initrd);
+      err = vm_load_guest_module(vm, vm_config->files.initrd,
+                                 vm_config->initrd_addr, 0, &initrd_image);
+      void *initrd = (void *)initrd_image.load_paddr;
+      if (!initrd || err) {
+          return -1;
+      }
+      // if (vm_config->generate_dtb) {
+      //     err = fdt_append_chosen_node_with_initrd_info(gen_dtb_buf,
+      //                                                   vm_config->initrd_addr,
+      //                                                   initrd_image.size);
+      //     if (err) {
+      //         ZF_LOGE("Couldn't generate chosen_node_with_initrd_info (%d)",
+      //         err); return -1;
+      //     }
+      // }
+  }
 
-  // if (vm_config->generate_dtb) {
-  //     ZF_LOGW_IF(vm_config->provide_dtb,
-  //                "provide_dtb and generate_dtb are both set. The provided dtb
-  //                will NOT be loaded");
-  //     err = vm_dtb_finalize(vm, vm_config);
-  //     if (err) {
-  //         ZF_LOGE("Couldn't generate DTB (%d)", err);
-  //         return -1;
-  //     }
-  //     printf("Loading Generated DTB\n");
-  //     vm_ram_mark_allocated(vm, vm_config->dtb_addr, sizeof(gen_dtb_buf));
-  //     vm_ram_touch(vm, vm_config->dtb_addr, sizeof(gen_dtb_buf),
-  //     load_generated_dtb,
-  //                  gen_dtb_buf);
-  //     dtb = vm_config->dtb_addr;
-  // } else if (vm_config->provide_dtb) {
-  //     printf("Loading DTB: \'%s\'\n", vm_config->files.dtb);
-  //
-  //     /* Load device tree */
-  //     guest_image_t dtb_image;
-  //     err = vm_load_guest_module(vm, vm_config->files.dtb,
-  //                                vm_config->dtb_addr, 0, &dtb_image);
-  //     dtb = dtb_image.load_paddr;
-  //     if (!dtb || err) {
-  //         return -1;
-  //     }
-  // } else {
-  //     ZF_LOGW("%s not given a DTB - This may be appropriate for your guest,
-  //     but it " \
-    //             "may also break things!", get_instance_name());
-  // }
+  if (vm_config->generate_dtb) {
+    printf("vm_config generate_dtb\n");
+      // ZF_LOGW_IF(vm_config->provide_dtb,
+      //            "provide_dtb and generate_dtb are both set. The provided dtb will NOT be loaded");
+      // err = vm_dtb_finalize(vm, vm_config);
+      // if (err) {
+      //     ZF_LOGE("Couldn't generate DTB (%d)", err);
+      //     return -1;
+      // }
+      // printf("Loading Generated DTB\n");
+      // vm_ram_mark_allocated(vm, vm_config->dtb_addr, sizeof(gen_dtb_buf));
+      // vm_ram_touch(vm, vm_config->dtb_addr, sizeof(gen_dtb_buf), load_generated_dtb,
+      //              gen_dtb_buf);
+      // dtb = vm_config->dtb_addr;
+  } else if (vm_config->provide_dtb) {
+      printf("Loading DTB: \'%s\'\n", vm_config->files.dtb);
+
+      /* Load device tree */
+      guest_image_t dtb_image;
+      err = vm_load_guest_module(vm, vm_config->files.dtb,
+                                 vm_config->dtb_addr, 0, &dtb_image);
+      dtb = dtb_image.load_paddr;
+      if (!dtb || err) {
+          return -1;
+      }
+  } else {
+      ZF_LOGW("%s not given a DTB - This may be appropriate for your guest, but it " \
+              "may also break things!", get_instance_name());
+  }
 
   /* Set boot arguments */
   // err = vcpu_set_bootargs(vm->vcpus[BOOT_VCPU], entry, MACH_TYPE, dtb);
-  err = vcpu_set_bootargs(vm->vcpus[BOOT_VCPU], entry, MACH_TYPE, dtb);
+  err = vcpu_set_bootargs(vm->vcpus[BOOT_VCPU], bios, MACH_TYPE, dtb);
   if (err) {
     printf("Error: Failed to set boot arguments\n");
     return -1;
@@ -1013,63 +1021,63 @@ static int load_vm_images(vm_t *vm, const vm_config_t *vm_config) {
 }
 
 /* Async event handling registration implementation */
-// typedef struct async_event_handler {
-//     seL4_Word badge;
-//     async_event_handler_fn_t callback;
-//     void *cookie;
-// } async_event_handler_t;
+typedef struct async_event_handler {
+    seL4_Word badge;
+    async_event_handler_fn_t callback;
+    void *cookie;
+} async_event_handler_t;
 
-// static int callback_idx = 0;
-// static async_event_handler_t *callback_arr = NULL;
+static int callback_idx = 0;
+static async_event_handler_t *callback_arr = NULL;
 
-// int register_async_event_handler(seL4_Word badge, async_event_handler_fn_t
-// callback, void *cookie)
-// {
-//     if (callback_arr == NULL) {
-//         callback_arr = calloc(1, sizeof(*callback_arr));
-//     } else {
-//         callback_arr = realloc(callback_arr, (callback_idx + 1) *
-//         sizeof(*callback_arr));
-//     }
-//     if (callback_arr == NULL) {
-//         ZF_LOGE("Failed to allocate memory for callback_arr");
-//         return -1;
-//     }
-//
-//     async_event_handler_t handler = {.badge = badge, .callback = callback,
-//     .cookie = cookie}; callback_arr[callback_idx] = handler; callback_idx++;
-//     return 0;
-// }
+int register_async_event_handler(seL4_Word badge, async_event_handler_fn_t
+callback, void *cookie)
+{
+    if (callback_arr == NULL) {
+        callback_arr = calloc(1, sizeof(*callback_arr));
+    } else {
+        callback_arr = realloc(callback_arr, (callback_idx + 1) *
+        sizeof(*callback_arr));
+    }
+    if (callback_arr == NULL) {
+        ZF_LOGE("Failed to allocate memory for callback_arr");
+        return -1;
+    }
 
-// static int handle_async_event(vm_t *vm, seL4_Word badge, seL4_MessageInfo_t
-// tag, void *cookie)
-// {
-//     seL4_Word label = seL4_MessageInfo_get_label(tag);
-//     if (badge == 0) {
-//         if (label == IRQ_MESSAGE_LABEL) {
-//             irq_server_handle_irq_ipc(_irq_server, tag);
-//         } else {
-//             ZF_LOGE("Unknown label (%"SEL4_PRId_word")", label);
-//         }
-// #ifdef FEATURE_VUSB
-//     } else if (badge == VUSB_NBADGE) {
-//         vusb_notify();
-// #endif
-//     } else {
-//         bool found_handler = false;
-//         for (int i = 0; i < callback_idx; i++) {
-//             assert(callback_arr);
-//             if ((badge & callback_arr[i].badge) == callback_arr[i].badge) {
-//                 callback_arr[i].callback(vm, callback_arr[i].cookie);
-//                 found_handler = true;
-//             }
-//         }
-//         if (!found_handler) {
-//             ZF_LOGE("Unknown badge (%"SEL4_PRId_word")", badge);
-//         }
-//     }
-//     return 0;
-// }
+    async_event_handler_t handler = {.badge = badge, .callback = callback,
+    .cookie = cookie}; callback_arr[callback_idx] = handler; callback_idx++;
+    return 0;
+}
+
+static int handle_async_event(vm_t *vm, seL4_Word badge, seL4_MessageInfo_t
+tag, void *cookie)
+{
+    seL4_Word label = seL4_MessageInfo_get_label(tag);
+    if (badge == 0) {
+        if (label == IRQ_MESSAGE_LABEL) {
+            irq_server_handle_irq_ipc(_irq_server, tag);
+        } else {
+            ZF_LOGE("Unknown label (%"SEL4_PRId_word")", label);
+        }
+#ifdef FEATURE_VUSB
+    } else if (badge == VUSB_NBADGE) {
+        vusb_notify();
+#endif
+    } else {
+        bool found_handler = false;
+        for (int i = 0; i < callback_idx; i++) {
+            assert(callback_arr);
+            if ((badge & callback_arr[i].badge) == callback_arr[i].badge) {
+                callback_arr[i].callback(vm, callback_arr[i].cookie);
+                found_handler = true;
+            }
+        }
+        if (!found_handler) {
+            ZF_LOGE("Unknown badge (%"SEL4_PRId_word")", badge);
+        }
+    }
+    return 0;
+}
 
 static int alloc_vm_device_cap(uintptr_t addr, vm_t *vm,
                                vm_frame_t *frame_result) {
@@ -1136,7 +1144,7 @@ static vm_frame_t on_demand_iterator(uintptr_t addr, void *cookie) {
     ZF_LOGE("Failed to create on demand memory for addr 0x%" PRIxPTR, addr);
   }
   // printf("OnDemandInstall: Created RAM-backed memory for addr 0x%" PRIxPTR "\n",
-         // addr);
+  //        addr);
   return frame_result;
 }
 
@@ -1155,8 +1163,10 @@ memory_fault_result_t unhandled_mem_fault_callback(vm_t *vm, vm_vcpu_t *vcpu,
   int mapped;
   vm_memory_reservation_t *reservation;
   switch (addr) {
+#ifndef CONFIG_ARCH_LOONGARCH
   case 0:
     return FAULT_ERROR;
+#endif
   default:
     reservation =
         vm_reserve_memory_at(vm, addr, SIZE_BITS_TO_BYTES(seL4_PageBits),
@@ -1203,17 +1213,17 @@ static int main_continued(void) {
   //     return -1;
   // }
 
-  // err = vmm_pci_init(&pci);
-  // if (err) {
-  //     ZF_LOGE("Failed to initialise vmm pci");
-  //     return err;
-  // }
-  //
-  // err = vmm_io_port_init(&io_ports, FREE_IOPORT_START);
-  // if (err) {
-  //     ZF_LOGE("Failed to initialise VM ioports");
-  //     return err;
-  // }
+  err = vmm_pci_init(&pci);
+  if (err) {
+      ZF_LOGE("Failed to initialise vmm pci");
+      return err;
+  }
+
+  err = vmm_io_port_init(&io_ports, FREE_IOPORT_START);
+  if (err) {
+      ZF_LOGE("Failed to initialise VM ioports");
+      return err;
+  }
 
   err = vmm_init(&vm_config);
   assert(!err);
@@ -1225,8 +1235,8 @@ static int main_continued(void) {
   err = vm_register_unhandled_mem_fault_callback(
       &vm, unhandled_mem_fault_callback, NULL);
   assert(!err);
-  // err = vm_register_notification_callback(&vm, handle_async_event, NULL);
-  // assert(!err);
+  err = vm_register_notification_callback(&vm, handle_async_event, NULL);
+  assert(!err);
 
   /* basic configuration flags */
   vm.entry = vm_config.entry_addr;

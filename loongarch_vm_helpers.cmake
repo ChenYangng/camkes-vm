@@ -45,7 +45,7 @@ function(DeclareCAmkESLoongarchVM init_component)
         vm_src
         ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/main.c
         # ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/fdt_manipulation.c
-        # ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/crossvm.c
+        ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/crossvm.c
         ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/modules/map_frame_hack.c
         ${LOONGARCH_VM_PROJECT_DIR}/components/VM_LoongArch/src/modules/init_ram.c
     )

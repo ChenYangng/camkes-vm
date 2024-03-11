@@ -133,7 +133,7 @@
   vm##num.base_prio = 100;                                                     \
   vm##num._priority = 101;                                                     \
   vm##num.sem_value = 0;                                                       \
-  vm##num.heap_size = 0x300000;
+  vm##num.heap_size = 0x3000000;
 
 #define VM_DOMAIN_CONFIGURATION_DEF(num, domain)                               \
   vm##num._domain = domain;                                                    \
